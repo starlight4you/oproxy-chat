@@ -12,6 +12,14 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  EXTRACT_CONVERSATION_SCRIPT,
+  buildDocumentHtml,
+  buildMarkdown,
+  sanitizeFilename,
+  writeDocx,
+  writePdf,
+} from "./export.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,7 +69,24 @@ function isAllowedUrl(raw, { allowEphemeral = false } = {}) {
   ) {
     return true;
   }
-  if (raw.startsWith("file://") && raw.includes("/src/error.html")) return true;
+  if (raw.startsWith("file://")) {
+    if (raw.includes("/src/error.html")) return true;
+
+    try {
+      const filePath = fileURLToPath(raw);
+      const tempDir = app.getPath("temp");
+      if (
+        filePath.startsWith(tempDir + path.sep) &&
+        path.basename(filePath).startsWith("oproxy-export-") &&
+        filePath.endsWith(".html")
+      ) {
+        return true;
+      }
+    } catch {
+      // Ignore invalid file URLs.
+    }
+    return false;
+  }
   try {
     const url = new URL(raw);
     if (url.protocol !== "https:" && url.protocol !== "http:") return false;
@@ -373,6 +398,7 @@ function showShortcuts() {
     detail: [
       "⌘N  新建对话",
       "⌘⇧S  切换侧边栏",
+      "⌘⇧E  导出当前对话为 Word",
       "⌘,  账户设置",
       "⌘[ / ⌘]  后退 / 前进",
       "⌘R  重新加载",
@@ -387,6 +413,112 @@ function showShortcuts() {
     dialog.showMessageBox(win, options);
   } else {
     dialog.showMessageBox(options);
+  }
+}
+
+function uniqueDownloadPath(filename) {
+  const directory = app.getPath("downloads");
+  const safeName = path.basename(filename || "download");
+  const extension = path.extname(safeName);
+  const baseName = path.basename(safeName, extension);
+  let candidate = path.join(directory, safeName);
+  let index = 1;
+
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(directory, `${baseName} (${index})${extension}`);
+    index += 1;
+  }
+
+  return candidate;
+}
+
+async function getConversationData() {
+  const win = getWindow();
+  if (!win) return { error: "没有打开的窗口。" };
+
+  try {
+    return await win.webContents.executeJavaScript(
+      EXTRACT_CONVERSATION_SCRIPT,
+      true,
+    );
+  } catch (error) {
+    return { error: `无法读取当前对话：${error.message}` };
+  }
+}
+
+async function exportConversation(format, { lastAssistant = false } = {}) {
+  const win = getWindow();
+  if (!win) return;
+
+  const data = await getConversationData();
+  if (!data || data.error || !Array.isArray(data.messages)) {
+    await dialog.showMessageBox(win, {
+      type: "warning",
+      title: APP_NAME,
+      message: "无法导出",
+      detail: data?.error || "无法读取当前对话。",
+    });
+    return;
+  }
+
+  const messages = lastAssistant
+    ? data.messages.filter((message) => message.role === "助手").slice(-1)
+    : data.messages;
+
+  if (messages.length === 0) {
+    await dialog.showMessageBox(win, {
+      type: "warning",
+      title: APP_NAME,
+      message: "无法导出",
+      detail: lastAssistant
+        ? "当前对话还没有助手回答。"
+        : "当前对话还没有可导出的消息。",
+    });
+    return;
+  }
+
+  const title = lastAssistant ? `${data.title} - 回答` : data.title;
+  const safeTitle = sanitizeFilename(title);
+  const extension = format === "pdf" ? "pdf" : format === "md" ? "md" : "docx";
+  const filterNames = {
+    docx: "Word 文档",
+    pdf: "PDF 文档",
+    md: "Markdown 文档",
+  };
+
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: lastAssistant ? "导出最后一条回答" : "导出当前对话",
+    defaultPath: path.join(
+      app.getPath("documents"),
+      `${safeTitle}.${extension}`,
+    ),
+    filters: [{ name: filterNames[extension], extensions: [extension] }],
+  });
+
+  if (canceled || !filePath) return;
+
+  const exportData = { title, messages };
+
+  try {
+    if (extension === "docx") {
+      await writeDocx(buildDocumentHtml(exportData), filePath);
+    } else if (extension === "pdf") {
+      await writePdf(buildDocumentHtml(exportData), filePath);
+    } else {
+      await fs.promises.writeFile(
+        filePath,
+        buildMarkdown(exportData),
+        "utf8",
+      );
+    }
+    shell.showItemInFolder(filePath);
+  } catch (error) {
+    await dialog.showMessageBox(win, {
+      type: "error",
+      title: APP_NAME,
+      message: "导出失败",
+      detail: String(error?.message || error),
+    });
   }
 }
 
@@ -429,6 +561,38 @@ function buildMenu() {
         {
           label: "在浏览器中打开",
           click: () => shell.openExternal(APP_ORIGIN),
+        },
+        { type: "separator" },
+        {
+          label: "导出",
+          submenu: [
+            {
+              label: "当前对话为 Word (.docx)…",
+              accelerator: "CmdOrCtrl+Shift+E",
+              click: () => exportConversation("docx"),
+            },
+            {
+              label: "当前对话为 PDF…",
+              click: () => exportConversation("pdf"),
+            },
+            {
+              label: "当前对话为 Markdown…",
+              click: () => exportConversation("md"),
+            },
+            { type: "separator" },
+            {
+              label: "最后一条回答为 Word (.docx)…",
+              click: () => exportConversation("docx", { lastAssistant: true }),
+            },
+            {
+              label: "最后一条回答为 PDF…",
+              click: () => exportConversation("pdf", { lastAssistant: true }),
+            },
+          ],
+        },
+        {
+          label: "打开下载文件夹",
+          click: () => shell.openPath(app.getPath("downloads")),
         },
         { type: "separator" },
         { label: "退出登录…", click: signOut },
@@ -558,6 +722,20 @@ function configureSession() {
       return isAllowedUrl(url) && ALLOWED_PERMISSIONS.has(permission);
     },
   );
+
+  defaultSession.on("will-download", (_event, item) => {
+    const filename = path.basename(item.getFilename() || "download");
+    const savePath = uniqueDownloadPath(filename);
+
+    item.setSavePath(savePath);
+    item.once("done", (_event, state) => {
+      if (state === "completed") {
+        shell.showItemInFolder(savePath);
+      } else if (state === "interrupted") {
+        dialog.showErrorBox("下载失败", `无法下载 ${filename}`);
+      }
+    });
+  });
 }
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();

@@ -69,12 +69,27 @@ npm run dist:universal
 
 如需切换账号，使用菜单 **文件 → 退出登录…**，会清除本机 Cookie 和本地存储，然后重新加载登录页。
 
+## 导出文档
+
+在对话页面，使用菜单 **文件 → 导出**：
+
+- **当前对话为 Word (.docx)…**（`⌘⇧E`）
+- **当前对话为 PDF…**
+- **当前对话为 Markdown…**
+- **最后一条回答为 Word (.docx)…**
+- **最后一条回答为 PDF…**
+
+导出文件默认保存到「文稿」文件夹，保存后会直接在 Finder 中定位。网页里触发的普通下载会自动保存到「下载」文件夹，同样会在 Finder 中显示；菜单 **文件 → 打开下载文件夹** 可以直接打开该目录。
+
+当前 oproxy 的模型不会直接返回 `.docx` 附件。可以让模型先把文档内容写出来，然后用 **最后一条回答为 Word (.docx)** 或 **最后一条回答为 PDF** 导出。
+
 ## 快捷键
 
 | 快捷键 | 功能 |
 | --- | --- |
 | `⌘N` | 新建对话 |
 | `⌘⇧S` | 切换侧边栏 |
+| `⌘⇧E` | 导出当前对话为 Word |
 | `⌘,` | 账户设置 |
 | `⌘[` / `⌘]` | 后退 / 前进 |
 | `⌘R` | 重新加载 |
@@ -119,6 +134,7 @@ xattr -d com.apple.quarantine "/Applications/Oproxy Chat.app"
 - 没有自动更新（auto-update），后续可以接入 `electron-updater`。
 - 离线时显示内置错误页，不提供离线聊天。
 - 网页端如果修改了 DOM 选择器，菜单里的“新建对话/侧边栏/账户设置”快捷键可能需要同步调整。
+- 导出功能依赖 LibreChat 页面的 DOM 结构（`data-testid="messages-view"`、`.message-render`、`.markdown.prose.message-content`）。网页大改后如果导出为空，需要同步调整 `src/export.js` 里的提取脚本。
 
 ## 移动端路线
 
