@@ -1,0 +1,78 @@
+{
+  "name": "oproxy-chat",
+  "productName": "Oproxy Chat",
+  "version": "0.1.0",
+  "description": "Oproxy Chat desktop app for macOS",
+  "type": "module",
+  "main": "src/main.js",
+  "author": "Oproxy",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "start:debug": "electron . --remote-debugging-port=9222",
+    "icon": "bash scripts/make-icon.sh",
+    "dist": "electron-builder --mac --arm64",
+    "dist:universal": "electron-builder --mac --universal",
+    "dist:dir": "electron-builder --mac --arm64 --dir",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "world.oproxy.chat",
+    "productName": "Oproxy Chat",
+    "asar": true,
+    "compression": "normal",
+    "npmRebuild": false,
+    "afterPack": "scripts/after-pack.cjs",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Oproxy Chat 需要使用麦克风进行语音输入。",
+        "NSCameraUsageDescription": "Oproxy Chat 需要使用摄像头拍摄并发送图片。",
+        "LSApplicationCategoryType": "public.app-category.productivity"
+      }
+    },
+    "dmg": {
+      "title": "Oproxy Chat ${version}",
+      "icon": "build/icon.icns",
+      "backgroundColor": "#ffffff",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 140,
+          "y": 190
+        },
+        {
+          "x": 400,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  }
+}
