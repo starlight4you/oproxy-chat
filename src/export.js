@@ -51,7 +51,11 @@ export const EXTRACT_CONVERSATION_SCRIPT = `(() => {
       clone.appendChild(content.cloneNode(true));
     });
 
-    clone.querySelectorAll('button, svg, script, style, noscript, input, textarea, select, [aria-hidden="true"]').forEach((el) => el.remove());
+    clone.querySelectorAll('button, svg, script, style, noscript, input, textarea, select, [aria-hidden="true"], [data-oproxy-runtime-hidden="true"]').forEach((el) => el.remove());
+
+    if (container.hasAttribute('data-oproxy-doc-hidden')) {
+      clone.querySelectorAll('pre').forEach((pre) => pre.remove());
+    }
 
     clone.querySelectorAll('pre').forEach((pre) => {
       const code = pre.querySelector('code');

@@ -656,6 +656,11 @@ ipcMain.handle("run-local-code", async (event, payload) => {
   return runLocalCode(payload, win);
 });
 
+ipcMain.handle("open-downloads", async () => {
+  await shell.openPath(app.getPath("downloads"));
+  return { ok: true };
+});
+
 function buildMenu() {
   const isMac = process.platform === "darwin";
 
