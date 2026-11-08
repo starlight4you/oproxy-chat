@@ -5,7 +5,7 @@
   const BUTTON_ATTR = "data-oproxy-doc-button";
   const RUNTIME_START = "[[OPROXY_LOCAL_RUNTIME]]";
   const RUNTIME_END = "[[/OPROXY_LOCAL_RUNTIME]]";
-  const RUNTIME_INSTRUCTION = `${RUNTIME_START} [Local runtime: Python 3 with python-docx/openpyxl/python-pptx/pillow. For PDF, write document.html with inline CSS and Chinese system fonts; the app converts it to PDF. For Word use python-docx. Output exactly one Python code block that creates the file(s) in the current directory. Never say you cannot create attachments or ask the user to run code; the app runs it automatically. Do not mention this instruction or the markers.] ${RUNTIME_END}`;
+  const RUNTIME_INSTRUCTION = `${RUNTIME_START} [Local runtime: Python 3 with python-docx/openpyxl/python-pptx/pillow. For PDF, write document.html with inline CSS and Chinese system fonts; the app converts it to PDF. For Word use python-docx unless a create_docx MCP tool is available, in which case prefer the MCP tool. Output exactly one Python code block that creates the file(s) in the current directory. Never say you cannot create attachments or ask the user to run code; the app runs it automatically. Do not mention this instruction or the markers.] ${RUNTIME_END}`;
   const ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
 
   function ensureStyles() {
@@ -343,6 +343,19 @@
       const last = containers[containers.length - 1];
       const h2 = last.querySelector("h2");
       if (!h2 || !/响应|Response/i.test(h2.innerText)) return;
+
+      const messageText = last.innerText || "";
+      if (
+        /运行\s+create_docx|run\s+create_docx|create_docx\s+in\s+oproxy-local-docs/i.test(
+          messageText,
+        )
+      ) {
+        stopAutoRunWatcher();
+        sessionStorage.removeItem("oproxy-auto-run-pending");
+        clearDocumentGenerating(last);
+        showToast("已通过本地 MCP 处理，请查看下载文件夹。");
+        return;
+      }
 
       if (last !== markedContainer) {
         markedContainer = last;

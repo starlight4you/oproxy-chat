@@ -111,6 +111,16 @@ npm run dist:universal
 
 安全说明：本地运行环境会执行 AI 生成的 Python 代码。代码在临时目录中执行，生成的文件复制到下载文件夹；包含系统/网络操作的代码会先弹窗确认。请只运行你信任的对话内容。
 
+## 本地 MCP 服务器（实验）
+
+除了内置的 Python 本地运行环境，项目还包含一个本地 MCP 服务器 `mcp-server/`。它通过 cloudflared 临时隧道暴露给 Oproxy Chat，AI 可以直接调用 `create_docx` 工具生成 Word 文档，文件保存在 `~/Downloads`。
+
+详细启动和配置步骤见 [`mcp-server/README.md`](mcp-server/README.md)。
+
+- 连接成功后，隐藏的本地运行指令会优先让 AI 调用 `create_docx` MCP 工具。
+- 如果 MCP 服务器未连接，AI 会回退到内置的 Python 本地运行环境。
+- Quick tunnel 的 URL 每次重启都会变化；生产使用建议换成带域名的 named tunnel。
+
 ## 快捷键
 
 | 快捷键 | 功能 |
