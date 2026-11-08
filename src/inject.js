@@ -21,7 +21,7 @@
     );
   }
 
-  function showToast(message, isError = false) {
+  function showToast(message, isError = false, persistent = false) {
     let toast = document.getElementById("oproxy-local-toast");
 
     if (!toast) {
@@ -53,9 +53,11 @@
     toast.style.background = isError ? "#b91c1c" : "#111827";
     toast.style.opacity = "1";
     clearTimeout(window.__oproxyToastTimer);
-    window.__oproxyToastTimer = setTimeout(() => {
-      toast.style.opacity = "0";
-    }, 8000);
+    if (!persistent) {
+      window.__oproxyToastTimer = setTimeout(() => {
+        toast.style.opacity = "0";
+      }, 8000);
+    }
   }
 
   async function runLocalCode(code, language, title) {
@@ -69,7 +71,7 @@
       return;
     }
 
-    showToast("正在本地运行代码生成文档…");
+    showToast("正在本地运行代码生成文档…", false, true);
 
     try {
       const result = await window.oproxyDesktop.runLocalCode({
@@ -122,25 +124,64 @@
 
   function startAutoRunWatcher() {
     clearInterval(window.__oproxyAutoRunTimer);
+    sessionStorage.setItem("oproxy-auto-run-pending", "true");
+
     const baseline = document.querySelectorAll(".message-render").length;
-    const startedAt = Date.now();
+    let watcherPath = location.pathname;
+    let lastContainerCount = baseline;
+    let lastTextLength = 0;
+    let lastProgressAt = Date.now();
+
+    showToast("AI 正在生成文档，请稍候…", false, true);
 
     window.__oproxyAutoRunTimer = setInterval(() => {
-      if (Date.now() - startedAt > 5 * 60 * 1000) {
+      if (watcherPath === "/c/new" && location.pathname.startsWith("/c/")) {
+        watcherPath = location.pathname;
+      } else if (location.pathname !== watcherPath) {
         clearInterval(window.__oproxyAutoRunTimer);
+        sessionStorage.removeItem("oproxy-auto-run-pending");
         return;
       }
 
       const containers = [...document.querySelectorAll(".message-render")];
+
+      if (containers.length !== lastContainerCount) {
+        lastContainerCount = containers.length;
+        lastProgressAt = Date.now();
+      }
+
       if (containers.length <= baseline) return;
 
       const last = containers[containers.length - 1];
       const h2 = last.querySelector("h2");
       if (!h2 || !/响应|Response/i.test(h2.innerText)) return;
-      if (!last.querySelector('[data-testid="copy-response-button"]')) return;
 
-      clearInterval(window.__oproxyAutoRunTimer);
-      runDocumentCode(last);
+      const textLength = last.innerText.length;
+      if (textLength !== lastTextLength) {
+        lastTextLength = textLength;
+        lastProgressAt = Date.now();
+        showToast(
+          `AI 正在生成文档…（已生成 ${textLength} 字符）`,
+          false,
+          true,
+        );
+      }
+
+      if (last.querySelector('[data-testid="copy-response-button"]')) {
+        clearInterval(window.__oproxyAutoRunTimer);
+        sessionStorage.removeItem("oproxy-auto-run-pending");
+        runDocumentCode(last);
+        return;
+      }
+
+      if (Date.now() - lastProgressAt > 5 * 60 * 1000) {
+        clearInterval(window.__oproxyAutoRunTimer);
+        sessionStorage.removeItem("oproxy-auto-run-pending");
+        showToast(
+          "AI 响应似乎停滞了，可以重试或点击「运行代码」手动生成。",
+          true,
+        );
+      }
     }, 500);
   }
 
@@ -399,4 +440,13 @@
 
   observer.observe(document.body, { childList: true, subtree: true });
   scan();
+
+  if (sessionStorage.getItem("oproxy-auto-run-pending") === "true") {
+    sessionStorage.removeItem("oproxy-auto-run-pending");
+    showToast(
+      "上次的文档生成可能未完成，请等待回答结束后点击「运行代码」。",
+      false,
+      true,
+    );
+  }
 })();
