@@ -74,6 +74,7 @@ export const EXTRACT_CONVERSATION_SCRIPT = `(() => {
       el.removeAttribute('id');
       el.removeAttribute('data-testid');
       el.removeAttribute('aria-label');
+      el.removeAttribute('style');
     });
 
     clone.querySelectorAll('a').forEach((a) => {

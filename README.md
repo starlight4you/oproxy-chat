@@ -10,6 +10,7 @@ Oproxy Chat 的 macOS 桌面客户端，基于 Electron。它直接加载 `https
 - 远程加载 Oproxy Chat（LibreChat），不复制前端代码
 - 独立的持久化会话，登录一次后保持登录
 - OIDC 登录流程在应用内完成（`Continue with Oproxy`）
+- 内置本地 Python 运行环境，AI 生成的文档代码在本地执行并保存到下载文件夹
 - 外部链接默认交给系统浏览器
 - 安全配置：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`
 
@@ -83,6 +84,31 @@ npm run dist:universal
 
 当前 oproxy 的模型不会直接返回 `.docx` 附件。可以让模型先把文档内容写出来，然后用 **最后一条回答为 Word (.docx)** 或 **最后一条回答为 PDF** 导出。
 
+## 本地运行环境
+
+应用内置了一个本地 Python 运行环境，让 AI 可以直接生成可下载文档，而不是让用户自己运行脚本。
+
+工作方式：
+
+1. 当你在对话里请求生成文档（Word、PDF、Excel、PPT、报告等），应用会自动在消息前加入一段本地运行指令。
+2. AI 会输出 Python 代码，应用在临时目录中执行代码。
+3. 生成的文件会自动保存到「下载」文件夹，并在 Finder 中定位。
+4. 回答里的 **运行代码** 按钮现在也会在本地执行代码；如果这条回答已经自动运行过，再点会提示文件位置，不会重复生成。
+
+支持：
+
+- Word `.docx`：`python-docx`
+- PDF：AI 输出自包含 HTML，应用用 Chromium 转成 PDF，中文字体正常
+- Excel `.xlsx`：`openpyxl`
+- PowerPoint `.pptx`：`python-pptx`
+- 图片、CSV、Markdown 等：Pillow / 标准库
+
+输入框下方的 **本地运行** 按钮可以强制为接下来的消息启用本地运行环境；即使不点，文档类关键词也会自动触发。
+
+首次使用如果系统 Python 缺少文档库，应用会提示安装 `python-docx`、`reportlab`、`openpyxl`、`python-pptx` 和 `pillow`。
+
+安全说明：本地运行环境会执行 AI 生成的 Python 代码。代码在临时目录中执行，生成的文件复制到下载文件夹；包含系统/网络操作的代码会先弹窗确认。请只运行你信任的对话内容。
+
 ## 快捷键
 
 | 快捷键 | 功能 |
@@ -135,6 +161,8 @@ xattr -d com.apple.quarantine "/Applications/Oproxy Chat.app"
 - 离线时显示内置错误页，不提供离线聊天。
 - 网页端如果修改了 DOM 选择器，菜单里的“新建对话/侧边栏/账户设置”快捷键可能需要同步调整。
 - 导出功能依赖 LibreChat 页面的 DOM 结构（`data-testid="messages-view"`、`.message-render`、`.markdown.prose.message-content`）。网页大改后如果导出为空，需要同步调整 `src/export.js` 里的提取脚本。
+- 本地运行环境依赖系统 Python 3 和 `python-docx`、`openpyxl`、`python-pptx`、`pillow`。如果系统没有 Python，需要先安装 Python 3。
+- AI 是否按“本地运行指令”输出代码取决于模型。如果模型没有输出 Python 代码，应用会提示“没有返回可运行的 Python 代码”，可以重试或换一个模型。
 
 ## 移动端路线
 

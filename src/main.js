@@ -3,7 +3,9 @@ import {
   BrowserWindow,
   Menu,
   dialog,
+  ipcMain,
   nativeImage,
+  Notification,
   screen,
   session,
   shell,
@@ -20,9 +22,14 @@ import {
   writeDocx,
   writePdf,
 } from "./export.js";
+import { runLocalCode } from "./runtime.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const INJECT_SCRIPT = fs.readFileSync(
+  path.join(__dirname, "inject.js"),
+  "utf8",
+);
 
 const APP_NAME = "Oproxy Chat";
 const APP_URL = new URL(process.env.OPROXY_CHAT_URL || "https://chat.oproxy.world");
@@ -190,6 +197,7 @@ function createWindow() {
     title: APP_NAME,
     backgroundColor: "#ffffff",
     webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -203,10 +211,15 @@ function createWindow() {
 
   mainWindow.loadURL(APP_ORIGIN);
 
+  mainWindow.webContents.on("did-finish-load", () => {
+    installDocumentButtons(mainWindow);
+  });
+
   mainWindow.once("ready-to-show", () => {
     if (saved.maximized) mainWindow.maximize();
     if (saved.fullScreen) mainWindow.setFullScreen(true);
     mainWindow.show();
+    installDocumentButtons(mainWindow);
   });
 
   mainWindow.on("close", () => saveWindowState(mainWindow));
@@ -272,6 +285,16 @@ function runInPage(script) {
     console.error("executeJavaScript failed", error);
     return undefined;
   });
+}
+
+function installDocumentButtons(win) {
+  if (!win || win.isDestroyed()) return;
+
+  win.webContents
+    .executeJavaScript(INJECT_SCRIPT, true)
+    .catch((error) =>
+      console.error("Failed to inject document buttons", error),
+    );
 }
 
 function newChat() {
@@ -521,6 +544,117 @@ async function exportConversation(format, { lastAssistant = false } = {}) {
     });
   }
 }
+
+function cleanMessageHtml(html) {
+  return String(html)
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<link[^>]*>/gi, "")
+    .replace(/<(iframe|object|embed)[\s\S]*?<\/\1>/gi, "")
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, "");
+}
+
+async function exportMessageDocument(payload, format) {
+  const win = getWindow();
+  if (!win) return;
+
+  const extension = format === "pdf" ? "pdf" : format === "md" ? "md" : "docx";
+  const title = payload.title || "Oproxy Chat 文档";
+  const filePath = uniqueDownloadPath(`${sanitizeFilename(title)}.${extension}`);
+  const exportData = {
+    title,
+    messages: [
+      {
+        role: "助手",
+        author: payload.author || "Oproxy Chat",
+        time:
+          payload.time ||
+          new Date().toLocaleString("zh-CN", { hour12: false }),
+        html: payload.html,
+        text: payload.text,
+      },
+    ],
+  };
+
+  try {
+    if (extension === "docx") {
+      await writeDocx(buildDocumentHtml(exportData), filePath);
+    } else if (extension === "pdf") {
+      await writePdf(buildDocumentHtml(exportData), filePath);
+    } else {
+      await fs.promises.writeFile(filePath, buildMarkdown(exportData), "utf8");
+    }
+
+    shell.showItemInFolder(filePath);
+
+    try {
+      if (Notification.isSupported()) {
+        new Notification({
+          title: "文档已生成",
+          body: `${path.basename(filePath)} 已保存到下载文件夹`,
+        }).show();
+      }
+    } catch {
+      // Notifications are optional.
+    }
+  } catch (error) {
+    await dialog.showMessageBox(win, {
+      type: "error",
+      title: APP_NAME,
+      message: "生成文档失败",
+      detail: String(error?.message || error),
+    });
+  }
+}
+
+ipcMain.handle("show-message-document-menu", async (event, payload) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || getWindow();
+  if (!win || win.isDestroyed()) return { ok: false };
+  if (!payload || typeof payload !== "object") return { ok: false };
+  if (typeof payload.html !== "string" || !payload.html.trim()) {
+    return { ok: false };
+  }
+  if (payload.html.length > 2_000_000) return { ok: false };
+
+  const safePayload = {
+    title:
+      typeof payload.title === "string"
+        ? payload.title.slice(0, 200)
+        : "Oproxy Chat 文档",
+    author:
+      typeof payload.author === "string"
+        ? payload.author.slice(0, 120)
+        : "Oproxy Chat",
+    time: typeof payload.time === "string" ? payload.time.slice(0, 120) : "",
+    html: cleanMessageHtml(payload.html),
+    text:
+      typeof payload.text === "string" ? payload.text.slice(0, 500_000) : "",
+  };
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: "下载为 Word (.docx)",
+      click: () => exportMessageDocument(safePayload, "docx"),
+    },
+    {
+      label: "下载为 PDF",
+      click: () => exportMessageDocument(safePayload, "pdf"),
+    },
+    {
+      label: "下载为 Markdown",
+      click: () => exportMessageDocument(safePayload, "md"),
+    },
+  ]);
+
+  menu.popup({ window: win });
+  return { ok: true };
+});
+
+ipcMain.handle("run-local-code", async (event, payload) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || getWindow();
+  return runLocalCode(payload, win);
+});
 
 function buildMenu() {
   const isMac = process.platform === "darwin";
