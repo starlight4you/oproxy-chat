@@ -111,15 +111,35 @@ npm run dist:universal
 
 安全说明：本地运行环境会执行 AI 生成的 Python 代码。代码在临时目录中执行，生成的文件复制到下载文件夹；包含系统/网络操作的代码会先弹窗确认。请只运行你信任的对话内容。
 
-## 本地 MCP 服务器（实验）
+## 本地 MCP（App 托管）
 
-除了内置的 Python 本地运行环境，项目还包含一个本地 MCP 服务器 `mcp-server/`。它通过 cloudflared 临时隧道暴露给 Oproxy Chat，AI 可以直接调用 `create_docx` 工具生成 Word 文档，文件保存在 `~/Downloads`。
+App 现在自带本地 MCP server（`src/mcp-server.js`），随 App 启动/退出，不再需要手动 `node server.js`。它通过 cloudflared 或后续的 relay 暴露给 Oproxy Chat，AI 可以调用 `create_docx` 工具生成 Word 文档，文件保存在 `~/Downloads`。
 
-详细启动和配置步骤见 [`mcp-server/README.md`](mcp-server/README.md)。
+### 状态窗口
 
-- 连接成功后，隐藏的本地运行指令会优先让 AI 调用 `create_docx` MCP 工具。
-- 如果 MCP 服务器未连接，AI 会回退到内置的 Python 本地运行环境。
-- Quick tunnel 的 URL 每次重启都会变化；生产使用建议换成带域名的 named tunnel。
+- 菜单 **文件 → 本地 MCP 状态…**（`⌘⇧M`），或打开 `oproxy://mcp`。
+- 查看运行状态、本地地址、公网地址、Token。
+- 启动/停止本地服务、复制 MCP 配置、打开聊天 MCP 设置、切换开机自启。
+- 公网地址可以在状态窗口里修改；改完后需要在聊天 MCP 设置里同步更新 URL。
+
+### URL scheme
+
+- `oproxy://open`：唤起并聚焦 App。
+- `oproxy://mcp`：打开本地 MCP 状态窗口。
+
+### 开机自启
+
+- 状态窗口里的“开机自启”使用 macOS 登录项（`app.setLoginItemSettings`），当前测试环境已开启。
+- App 关闭窗口后仍驻留 Dock；完全退出用 `⌘Q`。
+
+### 配置
+
+- `~/Library/Application Support/Oproxy Chat/mcp-config.json` 保存 token、端口、公网地址。
+- 聊天里的 MCP 服务器使用同一个 token；公网地址变化后需要同步。
+- 连接成功后，隐藏的本地运行指令会优先让 AI 调用 `create_docx` MCP 工具；MCP 未连接时回退到内置 Python 运行环境。
+- `mcp-server/` 仍保留为独立参考/调试服务器；App 实际使用的是 `src/mcp-server.js`。
+
+> 当前 cloudflared 隧道仍由外部进程提供，Quick tunnel URL 每次重启会变化。Phase 2 relay 会提供稳定地址和自动路由。
 
 ## 快捷键
 
@@ -128,6 +148,7 @@ npm run dist:universal
 | `⌘N` | 新建对话 |
 | `⌘⇧S` | 切换侧边栏 |
 | `⌘⇧E` | 导出当前对话为 Word |
+| `⌘⇧M` | 本地 MCP 状态窗口 |
 | `⌘,` | 账户设置 |
 | `⌘[` / `⌘]` | 后退 / 前进 |
 | `⌘R` | 重新加载 |

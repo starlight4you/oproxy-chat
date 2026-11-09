@@ -50,7 +50,15 @@
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Oproxy Chat 需要使用麦克风进行语音输入。",
         "NSCameraUsageDescription": "Oproxy Chat 需要使用摄像头拍摄并发送图片。",
-        "LSApplicationCategoryType": "public.app-category.productivity"
+        "LSApplicationCategoryType": "public.app-category.productivity",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "world.oproxy.chat",
+            "CFBundleURLSchemes": [
+              "oproxy"
+            ]
+          }
+        ]
       }
     },
     "dmg": {
@@ -74,5 +82,11 @@
         }
       ]
     }
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "docx": "^9.15.3",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
   }
 }

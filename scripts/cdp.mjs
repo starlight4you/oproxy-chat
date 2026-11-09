@@ -4,7 +4,14 @@ const port = process.env.CDP_PORT || "9222";
 const list = await fetch(`http://127.0.0.1:${port}/json/list`).then((r) =>
   r.json(),
 );
-const page = list.find((target) => target.type === "page");
+const targetTitle = process.env.CDP_TARGET_TITLE;
+const targetUrl = process.env.CDP_TARGET_URL;
+const page = list.find((target) => {
+  if (target.type !== "page") return false;
+  if (targetTitle && !target.title.includes(targetTitle)) return false;
+  if (targetUrl && !target.url.includes(targetUrl)) return false;
+  return true;
+});
 if (!page) {
   throw new Error("No page target found");
 }

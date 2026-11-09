@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   Menu,
   dialog,
   ipcMain,
@@ -23,6 +24,8 @@ import {
   writePdf,
 } from "./export.js";
 import { runLocalCode } from "./runtime.js";
+import { createMcpService } from "./mcp-server.js";
+import { loadMcpConfig, saveMcpConfig } from "./mcp-config.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,6 +55,9 @@ app.userAgentFallback = USER_AGENT;
 
 let mainWindow = null;
 let showingErrorPage = false;
+let mcpService = null;
+let mcpConfig = null;
+let mcpStatusWindow = null;
 
 function isAllowedHost(hostname) {
   const host = hostname.toLowerCase();
@@ -295,6 +301,60 @@ function installDocumentButtons(win) {
     .catch((error) =>
       console.error("Failed to inject document buttons", error),
     );
+}
+
+function openMcpStatusWindow() {
+  if (mcpStatusWindow && !mcpStatusWindow.isDestroyed()) {
+    mcpStatusWindow.show();
+    mcpStatusWindow.focus();
+    return;
+  }
+
+  mcpStatusWindow = new BrowserWindow({
+    width: 560,
+    height: 660,
+    minWidth: 500,
+    minHeight: 600,
+    title: "本地 MCP 服务",
+    show: false,
+    backgroundColor: "#f6f8f8",
+    webPreferences: {
+      preload: path.join(__dirname, "mcp-status-preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+    },
+  });
+
+  mcpStatusWindow.loadFile(path.join(__dirname, "mcp-status.html"));
+  mcpStatusWindow.once("ready-to-show", () => mcpStatusWindow.show());
+  mcpStatusWindow.on("closed", () => {
+    mcpStatusWindow = null;
+  });
+}
+
+function handleDeepLink(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "oproxy:") return;
+
+    if (parsed.hostname === "mcp" || parsed.pathname.startsWith("/mcp")) {
+      openMcpStatusWindow();
+      return;
+    }
+
+    const win = getWindow();
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    } else {
+      createWindow();
+    }
+  } catch {
+    // Ignore malformed deep links.
+  }
 }
 
 function newChat() {
@@ -661,6 +721,100 @@ ipcMain.handle("open-downloads", async () => {
   return { ok: true };
 });
 
+ipcMain.handle("mcp-status:get", () => {
+  const status = mcpService?.getStatus() || {
+    running: false,
+    port: mcpConfig?.port || 3333,
+    token: mcpConfig?.token || "",
+    publicBaseUrl: mcpConfig?.publicBaseUrl || "",
+    localUrl: `http://127.0.0.1:${mcpConfig?.port || 3333}/mcp`,
+    publicUrl: mcpConfig?.publicBaseUrl
+      ? `${mcpConfig.publicBaseUrl}/mcp`
+      : "",
+    fileCount: 0,
+  };
+
+  return {
+    ...status,
+    loginAtLogin: app.getLoginItemSettings().openAtLogin,
+  };
+});
+
+ipcMain.handle("mcp-status:start", async () => {
+  if (!mcpService) {
+    return { ok: false, error: "MCP 服务尚未初始化" };
+  }
+
+  try {
+    await mcpService.start();
+    return { ok: true, status: mcpService.getStatus() };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error) };
+  }
+});
+
+ipcMain.handle("mcp-status:stop", async () => {
+  if (!mcpService) {
+    return { ok: false, error: "MCP 服务尚未初始化" };
+  }
+
+  await mcpService.stop();
+  return { ok: true, status: mcpService.getStatus() };
+});
+
+ipcMain.handle("mcp-status:copy", (_event, text) => {
+  clipboard.writeText(String(text || ""));
+  return { ok: true };
+});
+
+ipcMain.handle("mcp-status:open-chat-settings", async () => {
+  const win = getWindow();
+  if (!win) return { ok: false, error: "聊天窗口未打开" };
+
+  win.show();
+  win.focus();
+
+  try {
+    await win.webContents.executeJavaScript(
+      `document.querySelector('[data-testid="nav-panel-mcp-builder"]')?.click(); true`,
+      true,
+    );
+  } catch {
+    // The chat may still be loading.
+  }
+
+  return { ok: true };
+});
+
+ipcMain.handle("mcp-status:get-login-item", () => ({
+  openAtLogin: app.getLoginItemSettings().openAtLogin,
+}));
+
+ipcMain.handle("mcp-status:set-login-item", (_event, enabled) => {
+  app.setLoginItemSettings({
+    openAtLogin: Boolean(enabled),
+    openAsHidden: true,
+  });
+  return { openAtLogin: app.getLoginItemSettings().openAtLogin };
+});
+
+ipcMain.handle("mcp-status:set-public-base-url", (_event, url) => {
+  let value = String(url || "").trim().replace(/\/$/, "");
+  if (value.endsWith("/mcp")) value = value.slice(0, -4);
+
+  if (value && !/^https?:\/\//i.test(value)) {
+    return { ok: false, error: "公网地址必须是 http(s) URL" };
+  }
+
+  if (mcpConfig) {
+    mcpConfig.publicBaseUrl = value;
+    saveMcpConfig(mcpConfig);
+  }
+  mcpService?.setPublicBaseUrl(value);
+
+  return { ok: true, status: mcpService?.getStatus() };
+});
+
 function buildMenu() {
   const isMac = process.platform === "darwin";
 
@@ -732,6 +886,11 @@ function buildMenu() {
         {
           label: "打开下载文件夹",
           click: () => shell.openPath(app.getPath("downloads")),
+        },
+        {
+          label: "本地 MCP 状态…",
+          accelerator: "CmdOrCtrl+Shift+M",
+          click: openMcpStatusWindow,
         },
         { type: "separator" },
         { label: "退出登录…", click: signOut },
@@ -882,7 +1041,21 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url);
+  });
+
+  app.on("second-instance", (_event, argv) => {
+    const deepLink = Array.isArray(argv)
+      ? argv.find((arg) => arg.startsWith("oproxy://"))
+      : null;
+
+    if (deepLink) {
+      handleDeepLink(deepLink);
+      return;
+    }
+
     const win = getWindow();
     if (!win) {
       createWindow();
@@ -891,6 +1064,10 @@ if (!gotSingleInstanceLock) {
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
+  });
+
+  app.on("before-quit", () => {
+    mcpService?.stop();
   });
 
   app.on("web-contents-created", (_event, contents) => {
@@ -945,6 +1122,32 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     configureSession();
 
+    mcpConfig = loadMcpConfig();
+    mcpService = createMcpService({
+      token: mcpConfig.token,
+      port: mcpConfig.port,
+      publicBaseUrl: mcpConfig.publicBaseUrl,
+      onDocument: (filePath) => {
+        try {
+          if (Notification.isSupported()) {
+            new Notification({
+              title: "文档已生成",
+              body: path.basename(filePath),
+            }).show();
+          }
+        } catch {
+          // Notifications are optional.
+        }
+      },
+    });
+
+    mcpService
+      .start()
+      .then(() => console.log("Local MCP server started"))
+      .catch((error) => console.error("Local MCP server failed", error));
+
+    app.setAsDefaultProtocolClient("oproxy");
+
     app.setAboutPanelOptions({
       applicationName: APP_NAME,
       applicationVersion: app.getVersion(),
@@ -962,6 +1165,9 @@ if (!gotSingleInstanceLock) {
 
     Menu.setApplicationMenu(buildMenu());
     createWindow();
+
+    const deepLink = process.argv.find((arg) => arg.startsWith("oproxy://"));
+    if (deepLink) handleDeepLink(deepLink);
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {

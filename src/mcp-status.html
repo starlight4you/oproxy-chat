@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>本地 MCP 服务</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f8f8;
+        --card: #ffffff;
+        --fg: #111827;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --accent: #009688;
+        --accent-strong: #00796b;
+        --danger: #b91c1c;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0f10;
+          --card: #111617;
+          --fg: #f3f4f6;
+          --muted: #9ca3af;
+          --line: #243033;
+          --accent: #26a69a;
+          --accent-strong: #4db6ac;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 28px;
+        background: var(--bg);
+        color: var(--fg);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+          "Helvetica Neue", sans-serif;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      main {
+        max-width: 520px;
+        margin: 0 auto;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #ffffff;
+        font-size: 18px;
+        font-weight: 700;
+        background: linear-gradient(145deg, #62d0cd, #2297a6);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: -0.01em;
+      }
+
+      header p {
+        margin: 1px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .status {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #9ca3af;
+      }
+
+      .dot.on {
+        background: #10b981;
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 4px 14px;
+        margin-bottom: 14px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 42px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .row:last-child {
+        border-bottom: 0;
+      }
+
+      .row > span:first-child {
+        width: 72px;
+        flex-shrink: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      code {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: "SF Mono", Menlo, monospace;
+        font-size: 11px;
+        color: var(--fg);
+      }
+
+      input[type="text"] {
+        flex: 1;
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 7px 9px;
+        background: transparent;
+        color: var(--fg);
+        font-family: "SF Mono", Menlo, monospace;
+        font-size: 11px;
+        outline: none;
+      }
+
+      input[type="text"]:focus {
+        border-color: var(--accent);
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 6px 10px;
+        background: transparent;
+        color: var(--fg);
+        font-size: 12px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      button:hover {
+        border-color: var(--accent);
+        color: var(--accent-strong);
+      }
+
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #ffffff;
+        font-weight: 600;
+      }
+
+      button.primary:hover {
+        background: var(--accent-strong);
+        border-color: var(--accent-strong);
+        color: #ffffff;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+      }
+
+      .actions button {
+        padding: 8px 12px;
+      }
+
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 4px 0 14px;
+        color: var(--fg);
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .check input {
+        accent-color: var(--accent);
+      }
+
+      .note {
+        margin: 0;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.6;
+      }
+
+      .message {
+        min-height: 18px;
+        margin: 10px 0 0;
+        color: var(--accent-strong);
+        font-size: 12px;
+      }
+
+      .message.error {
+        color: var(--danger);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="logo">O</div>
+        <div>
+          <h1>本地 MCP 服务</h1>
+          <p>Oproxy Chat Desktop</p>
+        </div>
+        <div class="status">
+          <span id="statusDot" class="dot"></span>
+          <span id="statusText">检查中…</span>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="row">
+          <span>本地地址</span>
+          <code id="localUrl">—</code>
+          <button id="copyLocal" type="button">复制</button>
+        </div>
+        <div class="row">
+          <span>公网地址</span>
+          <input
+            id="publicBase"
+            type="text"
+            placeholder="https://xxxx.trycloudflare.com"
+            spellcheck="false"
+          />
+          <button id="savePublic" type="button">保存</button>
+        </div>
+        <div class="row">
+          <span>MCP URL</span>
+          <code id="publicUrl">—</code>
+          <button id="copyMcp" type="button">复制</button>
+        </div>
+        <div class="row">
+          <span>Token</span>
+          <code id="token">••••••</code>
+          <button id="toggleToken" type="button">显示</button>
+          <button id="copyToken" type="button">复制</button>
+        </div>
+        <div class="row">
+          <span>已生成文件</span>
+          <code id="fileCount">0</code>
+        </div>
+      </section>
+
+      <section class="actions">
+        <button id="toggleService" class="primary" type="button">启动服务</button>
+        <button id="copyConfig" type="button">复制 MCP 配置</button>
+        <button id="openSettings" type="button">打开聊天 MCP 设置</button>
+      </section>
+
+      <label class="check">
+        <input id="loginItem" type="checkbox" />
+        开机自启（macOS 登录项）
+      </label>
+
+      <p class="note">
+        Quick tunnel 的 URL 每次重启会变化；Phase 2 relay 会提供稳定地址。修改公网地址后，记得在聊天
+        MCP 设置里同步更新。
+      </p>
+
+      <p id="message" class="message"></p>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      let latest = null;
+      let tokenVisible = false;
+      let messageTimer = null;
+
+      function showMessage(text, isError = false) {
+        const el = $("message");
+        el.textContent = text;
+        el.classList.toggle("error", isError);
+        clearTimeout(messageTimer);
+        messageTimer = setTimeout(() => {
+          el.textContent = "";
+          el.classList.remove("error");
+        }, 5000);
+      }
+
+      function mcpUrl(status) {
+        return status.publicUrl || status.localUrl;
+      }
+
+      function configText(status) {
+        const url = mcpUrl(status);
+        const warning = status.publicUrl
+          ? ""
+          : "注意：公网地址未配置，远端聊天无法访问本地 MCP。\n\n";
+        return `${warning}MCP 服务器 URL: ${url}\nTransport: Streamable HTTPS\nAuth: Bearer ${status.token}`;
+      }
+
+      async function refresh() {
+        if (!window.mcpStatus) {
+          showMessage("本地状态接口不可用。", true);
+          return;
+        }
+
+        try {
+          const status = await window.mcpStatus.get();
+          latest = status;
+
+          $("statusDot").classList.toggle("on", !!status.running);
+          $("statusText").textContent = status.running
+            ? `运行中 · ${status.port}`
+            : "已停止";
+          $("localUrl").textContent = status.localUrl || "—";
+          $("publicUrl").textContent = status.publicUrl || "未配置";
+          $("publicBase").value = status.publicBaseUrl || "";
+          $("token").textContent = tokenVisible ? status.token : "••••••";
+          $("toggleToken").textContent = tokenVisible ? "隐藏" : "显示";
+          $("fileCount").textContent = String(status.fileCount || 0);
+          $("toggleService").textContent = status.running ? "停止服务" : "启动服务";
+          $("toggleService").classList.toggle("primary", !status.running);
+        } catch (error) {
+          showMessage(String(error), true);
+        }
+      }
+
+      async function refreshLoginItem() {
+        try {
+          const result = await window.mcpStatus.getLoginItem();
+          $("loginItem").checked = !!result.openAtLogin;
+        } catch {
+          // Ignore.
+        }
+      }
+
+      $("toggleService").addEventListener("click", async () => {
+        try {
+          const result = latest?.running
+            ? await window.mcpStatus.stop()
+            : await window.mcpStatus.start();
+          if (result && result.ok === false) {
+            showMessage(result.error || "操作失败", true);
+          } else {
+            showMessage(latest?.running ? "服务已停止" : "服务已启动");
+          }
+        } catch (error) {
+          showMessage(String(error), true);
+        }
+        await refresh();
+      });
+
+      $("savePublic").addEventListener("click", async () => {
+        try {
+          const result = await window.mcpStatus.setPublicBaseUrl(
+            $("publicBase").value,
+          );
+          if (result.ok === false) {
+            showMessage(result.error || "保存失败", true);
+          } else {
+            showMessage("公网地址已保存");
+          }
+        } catch (error) {
+          showMessage(String(error), true);
+        }
+        await refresh();
+      });
+
+      $("copyLocal").addEventListener("click", async () => {
+        if (latest?.localUrl) {
+          await window.mcpStatus.copy(latest.localUrl);
+          showMessage("已复制本地地址");
+        }
+      });
+
+      $("copyMcp").addEventListener("click", async () => {
+        if (latest) {
+          await window.mcpStatus.copy(mcpUrl(latest));
+          showMessage("已复制 MCP URL");
+        }
+      });
+
+      $("toggleToken").addEventListener("click", () => {
+        tokenVisible = !tokenVisible;
+        if (latest) {
+          $("token").textContent = tokenVisible ? latest.token : "••••••";
+          $("toggleToken").textContent = tokenVisible ? "隐藏" : "显示";
+        }
+      });
+
+      $("copyToken").addEventListener("click", async () => {
+        if (latest?.token) {
+          await window.mcpStatus.copy(latest.token);
+          showMessage("已复制 Token");
+        }
+      });
+
+      $("copyConfig").addEventListener("click", async () => {
+        if (latest) {
+          await window.mcpStatus.copy(configText(latest));
+          showMessage("已复制 MCP 配置");
+        }
+      });
+
+      $("openSettings").addEventListener("click", async () => {
+        await window.mcpStatus.openChatSettings();
+      });
+
+      $("loginItem").addEventListener("change", async () => {
+        try {
+          const result = await window.mcpStatus.setLoginItem(
+            $("loginItem").checked,
+          );
+          $("loginItem").checked = !!result.openAtLogin;
+          showMessage(
+            $("loginItem").checked ? "已开启开机自启" : "已关闭开机自启",
+          );
+        } catch (error) {
+          showMessage(String(error), true);
+        }
+      });
+
+      refresh();
+      refreshLoginItem();
+      setInterval(refresh, 2000);
+    </script>
+  </body>
+</html>
