@@ -33,13 +33,26 @@ node relay/server.js
 | `RELAY_PUBLIC_URL` | empty | Public base URL, shown in `/health` and logs. |
 | `RELAY_REQUEST_TIMEOUT_MS` | `60000` | How long to wait for the app to answer a JSON-RPC request. |
 
-Expose the relay with cloudflared (PoC) or deploy it at a stable domain:
+For local development, point the app at `ws://127.0.0.1:4444/app` directly.
 
-```bash
-cloudflared tunnel --url http://127.0.0.1:4444 --no-autoupdate --protocol http2
+For public access, deploy behind Oproxy's own reverse proxy / load balancer at `mcp.oproxy.world`. Do not use Cloudflare Tunnel or Cloudflare proxy.
+
+nginx example:
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:4444;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_read_timeout 3600s;
+  proxy_send_timeout 3600s;
+  proxy_buffering off;
+}
 ```
-
-Copy the `https://xxxx.trycloudflare.com` URL.
 
 ## Docker
 

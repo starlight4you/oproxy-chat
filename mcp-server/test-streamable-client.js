@@ -26,7 +26,7 @@ const result = await client.callTool({
   arguments: {
     title: "MCP 隧道测试",
     content:
-      "# 一、简介\n\n这是通过 cloudflared 隧道调用本地 MCP 服务器生成的文档。\n\n- 链路正常\n- 文件保存在下载文件夹",
+      "# 一、简介\n\n这是通过公网 relay / 反向代理调用本地 MCP 服务器生成的文档。\n\n- 链路正常\n- 文件保存在下载文件夹",
     filename: "MCP隧道测试.docx",
   },
 });

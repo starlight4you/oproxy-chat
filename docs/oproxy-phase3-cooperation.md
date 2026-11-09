@@ -46,12 +46,12 @@
 - relay PoC：标准 `/mcp` HTTP 端点 + `/app` WebSocket + `/health`。
 - 聊天端 MCP 服务器通过 relay 连接成功，四个工具均可调用。
 - App 退出后 relay 返回友好离线错误；App 重启后自动重连，聊天端配置无需修改。
-- 已通过 cloudflared quick tunnel 完成公网联调。
+- 本地端到端验证已完成；公网联调需要 Oproxy 提供自有域名和反向代理。
 
 当前 PoC 的限制：
 
 - 单 App 连接、共享 bearer token。
-- quick tunnel URL 每次重启会变化。
+- 公网入口尚未配置，目前只在本地 `127.0.0.1:4444` 运行。
 - 没有 OIDC token 交换、没有多用户路由、没有生产级限流和审计。
 
 ---
@@ -102,6 +102,7 @@
 - `mcp.oproxy.world` 的 DNS 记录（A / AAAA 或 CNAME 到负载均衡）。
 - 有效 TLS 证书。
 - 支持 WebSocket Upgrade 的入口（443 端口，`wss://mcp.oproxy.world/app`）。
+- **不使用 Cloudflare Tunnel / Cloudflare 代理**，由 Oproxy 自有网关、反向代理或负载均衡承载。
 
 验收：
 
@@ -141,7 +142,8 @@ curl https://mcp.oproxy.world/health
 - `proxy_read_timeout` / `proxy_send_timeout` 建议 ≥ 3600s。
 - 关闭响应缓冲（`proxy_buffering off`）。
 - 健康检查路径 `/health`。
-- 如果经过 Cloudflare，确认 WebSocket 空闲超时大于 App 心跳间隔（App 每 20s ping 一次）。
+- WebSocket 空闲超时需大于 App 心跳间隔（App 每 20s ping 一次）。
+- 不使用 Cloudflare Tunnel / Cloudflare 代理。
 
 ### P0-3：OIDC token 交换接口
 

@@ -142,13 +142,13 @@ MCP 工具：
 RELAY_TOKEN="<与 App 相同的 token>" RELAY_PORT=4444 node relay/server.js
 ```
 
-PoC 阶段用 cloudflared quick tunnel 暴露：
+本地联调时 App 直接连接 `ws://127.0.0.1:4444/app`，不需要公网入口。
 
-```bash
-cloudflared tunnel --url http://127.0.0.1:4444 --no-autoupdate --protocol http2
-```
+公网联调 / 生产环境由 Oproxy 提供 `mcp.oproxy.world` 域名和反向代理 / 负载均衡，将 HTTPS 和 WebSocket 流量转发到 relay 的 `4444` 端口。要求：
 
-把得到的 `https://xxxx.trycloudflare.com` 填入 App 状态窗口的 **Relay 公网地址**。
+- 开启 WebSocket Upgrade。
+- 代理空闲超时大于 App 心跳间隔（20s），建议 ≥ 3600s。
+- **不使用 Cloudflare Tunnel / Cloudflare 代理**。
 
 ### 状态窗口
 
@@ -161,7 +161,7 @@ cloudflared tunnel --url http://127.0.0.1:4444 --no-autoupdate --protocol http2
 
 在 Oproxy Chat 的 **MCP 设置 → 添加 MCP**：
 
-- URL：`https://xxxx.trycloudflare.com/mcp`
+- URL：`https://mcp.oproxy.world/mcp`
 - Transport：`Streamable HTTPS`
 - 认证：`API 密钥` / `Bearer`
 - API key：与 App 的 token 相同
@@ -211,7 +211,7 @@ Relay 检测到 App 未连接时，工具调用会返回：
     "relayUrl": "ws://127.0.0.1:4444/app",
     "relayToken": "<token>",
     "relayTokenUrl": "",
-    "relayPublicUrl": "https://xxxx.trycloudflare.com"
+    "relayPublicUrl": "https://mcp.oproxy.world"
   }
   ```
 
@@ -221,7 +221,7 @@ Relay 检测到 App 未连接时，工具调用会返回：
 - `mcp-server/` 仍保留为独立参考/调试服务器；App 实际使用的是 `src/mcp-server.js`。
 - `relay/` 包含 relay 服务、Dockerfile 和部署说明，协议与配置见 `relay/README.md`。
 
-> Relay PoC 目前是单 App 连接 + 共享 token + quick tunnel。生产化需要稳定域名（如 `mcp.oproxy.world`）、WSS、OIDC 短期 token、多用户路由和限流。需要 Oproxy 侧配合的事项和接口契约见 [`docs/oproxy-phase3-cooperation.md`](docs/oproxy-phase3-cooperation.md)。
+> Relay PoC 目前是单 App 连接 + 共享 token，公网入口暂未配置。生产化由 Oproxy 提供 `mcp.oproxy.world` 域名和自有反向代理 / 负载均衡（不使用 Cloudflare），并补齐 WSS、OIDC 短期 token、多用户路由和限流。需要 Oproxy 侧配合的事项和接口契约见 [`docs/oproxy-phase3-cooperation.md`](docs/oproxy-phase3-cooperation.md)。
 
 ## 快捷键
 
@@ -278,7 +278,7 @@ xattr -d com.apple.quarantine "/Applications/Oproxy Chat.app"
 - 导出功能依赖 LibreChat 页面的 DOM 结构（`data-testid="messages-view"`、`.message-render`、`.markdown.prose.message-content`）。网页大改后如果导出为空，需要同步调整 `src/export.js` 里的提取脚本。
 - 本地运行环境依赖系统 Python 3 和 `python-docx`、`openpyxl`、`python-pptx`、`pillow`。如果系统没有 Python，需要先安装 Python 3。
 - AI 是否按“本地运行指令”输出代码取决于模型。如果模型没有输出 Python 代码，应用会提示“没有返回可运行的 Python 代码”，可以重试或换一个模型。
-- Relay 目前是 PoC：只支持一个 App 连接、共享 bearer token、cloudflared quick tunnel；公网地址变化后需要同步聊天端 MCP 配置。
+- Relay 目前是 PoC：只支持一个 App 连接、共享 bearer token，公网入口尚未配置；生产环境由 Oproxy 自有域名和反向代理承载（不使用 Cloudflare）。
 
 ## 移动端路线
 
