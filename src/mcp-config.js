@@ -10,22 +10,37 @@ function configFile() {
 export function loadMcpConfig() {
   try {
     const data = JSON.parse(fs.readFileSync(configFile(), "utf8"));
+    const token =
+      typeof data.token === "string" && data.token
+        ? data.token
+        : randomBytes(24).toString("hex");
+
     return {
-      token:
-        typeof data.token === "string" && data.token
-          ? data.token
-          : randomBytes(24).toString("hex"),
+      token,
       port: Number.isInteger(data.port) ? data.port : 3333,
       publicBaseUrl:
         typeof data.publicBaseUrl === "string"
           ? data.publicBaseUrl.replace(/\/$/, "")
           : "",
+      relayUrl: typeof data.relayUrl === "string" ? data.relayUrl : "",
+      relayToken:
+        typeof data.relayToken === "string" && data.relayToken
+          ? data.relayToken
+          : token,
+      relayPublicUrl:
+        typeof data.relayPublicUrl === "string"
+          ? data.relayPublicUrl.replace(/\/$/, "")
+          : "",
     };
   } catch {
+    const token = randomBytes(24).toString("hex");
     return {
-      token: randomBytes(24).toString("hex"),
+      token,
       port: 3333,
       publicBaseUrl: "",
+      relayUrl: "",
+      relayToken: token,
+      relayPublicUrl: "",
     };
   }
 }

@@ -11,6 +11,7 @@ Oproxy Chat 的 macOS 桌面客户端，基于 Electron。它直接加载 `https
 - 独立的持久化会话，登录一次后保持登录
 - OIDC 登录流程在应用内完成（`Continue with Oproxy`）
 - 内置本地 Python 运行环境，AI 生成的文档代码在本地执行并保存到下载文件夹
+- App 自带本地 MCP server，通过 relay + WebSocket 反向隧道暴露给聊天，无需公网端口
 - 外部链接默认交给系统浏览器
 - 安全配置：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`
 
@@ -111,16 +112,75 @@ npm run dist:universal
 
 安全说明：本地运行环境会执行 AI 生成的 Python 代码。代码在临时目录中执行，生成的文件复制到下载文件夹；包含系统/网络操作的代码会先弹窗确认。请只运行你信任的对话内容。
 
-## 本地 MCP（App 托管）
+## 本地 MCP（App 托管 + Relay）
 
-App 现在自带本地 MCP server（`src/mcp-server.js`），随 App 启动/退出，不再需要手动 `node server.js`。它通过 cloudflared 或后续的 relay 暴露给 Oproxy Chat，AI 可以调用 `create_docx` 工具生成 Word 文档，文件保存在 `~/Downloads`。
+App 自带本地 MCP server（`src/mcp-server.js`），随 App 启动/退出。它只监听 `127.0.0.1:3333`，通过 **relay 反向隧道** 暴露给 Oproxy Chat：
+
+```
+Oproxy Chat（chat.oproxy.world）
+   │  Streamable HTTP MCP
+   ▼
+Relay（relay/server.js，公网地址）
+   │  WebSocket（由 App 主动连接）
+   ▼
+Oproxy Chat.app
+   └─ 本地 MCP server（create_docx）
+```
+
+App 不需要开放公网端口；relay 是唯一公网入口。App 启动时自动连接 relay，断线后按指数退避重连（1s → 2s → … → 30s），并用 WebSocket ping/pong 检测死连接。
+
+### 启动 relay
+
+```bash
+RELAY_TOKEN="<与 App 相同的 token>" RELAY_PORT=4444 node relay/server.js
+```
+
+PoC 阶段用 cloudflared quick tunnel 暴露：
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:4444 --no-autoupdate --protocol http2
+```
+
+把得到的 `https://xxxx.trycloudflare.com` 填入 App 状态窗口的 **Relay 公网地址**。
 
 ### 状态窗口
 
 - 菜单 **文件 → 本地 MCP 状态…**（`⌘⇧M`），或打开 `oproxy://mcp`。
-- 查看运行状态、本地地址、公网地址、Token。
+- 查看运行状态、**Relay 连接**、本地地址、**Relay 公网地址**、MCP URL、Token。
 - 启动/停止本地服务、复制 MCP 配置、打开聊天 MCP 设置、切换开机自启。
-- 公网地址可以在状态窗口里修改；改完后需要在聊天 MCP 设置里同步更新 URL。
+- Relay 公网地址可以在状态窗口里修改；改完后需要在聊天 MCP 设置里同步更新 URL。
+
+### 聊天端 MCP 配置
+
+在 Oproxy Chat 的 **MCP 设置 → 添加 MCP**：
+
+- URL：`https://xxxx.trycloudflare.com/mcp`
+- Transport：`Streamable HTTPS`
+- 认证：`API 密钥` / `Bearer`
+- API key：与 App 的 token 相同
+
+App 重启或重新连接不会改变聊天端 URL，下一次工具调用会自动走新连接。
+
+### 离线行为
+
+Relay 检测到 App 未连接时，工具调用会返回：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32000,
+    "message": "本地 Oproxy Chat 未连接。请打开桌面应用后重试（oproxy://open）。",
+    "data": {
+      "openUrl": "oproxy://open",
+      "installUrl": "https://oproxy.world"
+    }
+  }
+}
+```
+
+打开 App 后 relay 自动重连，无需修改聊天配置。
 
 ### URL scheme
 
@@ -134,12 +194,25 @@ App 现在自带本地 MCP server（`src/mcp-server.js`），随 App 启动/退�
 
 ### 配置
 
-- `~/Library/Application Support/Oproxy Chat/mcp-config.json` 保存 token、端口、公网地址。
-- 聊天里的 MCP 服务器使用同一个 token；公网地址变化后需要同步。
+- `~/Library/Application Support/Oproxy Chat/mcp-config.json` 保存 token、端口、公网地址和 relay 配置：
+
+  ```json
+  {
+    "port": 3333,
+    "token": "<token>",
+    "publicBaseUrl": "",
+    "relayUrl": "ws://127.0.0.1:4444/app",
+    "relayToken": "<token>",
+    "relayPublicUrl": "https://xxxx.trycloudflare.com"
+  }
+  ```
+
+- 聊天里的 MCP 服务器使用同一个 token；Relay 公网地址变化后需要同步。
 - 连接成功后，隐藏的本地运行指令会优先让 AI 调用 `create_docx` MCP 工具；MCP 未连接时回退到内置 Python 运行环境。
 - `mcp-server/` 仍保留为独立参考/调试服务器；App 实际使用的是 `src/mcp-server.js`。
+- `relay/` 是 PoC relay，协议和部署细节见 `relay/README.md`。
 
-> 当前 cloudflared 隧道仍由外部进程提供，Quick tunnel URL 每次重启会变化。Phase 2 relay 会提供稳定地址和自动路由。
+> Relay PoC 目前是单 App 连接 + 共享 token + quick tunnel。生产化需要稳定域名（如 `mcp.oproxy.world`）、WSS、OIDC 短期 token、多用户路由和限流。
 
 ## 快捷键
 
@@ -196,6 +269,7 @@ xattr -d com.apple.quarantine "/Applications/Oproxy Chat.app"
 - 导出功能依赖 LibreChat 页面的 DOM 结构（`data-testid="messages-view"`、`.message-render`、`.markdown.prose.message-content`）。网页大改后如果导出为空，需要同步调整 `src/export.js` 里的提取脚本。
 - 本地运行环境依赖系统 Python 3 和 `python-docx`、`openpyxl`、`python-pptx`、`pillow`。如果系统没有 Python，需要先安装 Python 3。
 - AI 是否按“本地运行指令”输出代码取决于模型。如果模型没有输出 Python 代码，应用会提示“没有返回可运行的 Python 代码”，可以重试或换一个模型。
+- Relay 目前是 PoC：只支持一个 App 连接、共享 bearer token、cloudflared quick tunnel；公网地址变化后需要同步聊天端 MCP 配置。
 
 ## 移动端路线
 
@@ -209,10 +283,17 @@ xattr -d com.apple.quarantine "/Applications/Oproxy Chat.app"
 ```
 .
 ├── build/              # 图标资源（icon.png / icon.icns）
+├── relay/
+│   ├── server.js       # MCP Streamable HTTP ↔ WebSocket relay
+│   └── README.md       # relay 协议与部署说明
 ├── scripts/
 │   └── make-icon.sh    # 从 512px 图标生成 icns
 ├── src/
 │   ├── main.js         # Electron 主进程、窗口、菜单、会话
+│   ├── mcp-server.js   # App 托管的本地 MCP server
+│   ├── relay-client.js # App 侧 WebSocket 反向隧道客户端
+│   ├── mcp-config.js   # MCP / relay 配置读写
+│   ├── mcp-status.html # 本地 MCP 状态窗口
 │   └── error.html      # 网络失败时的内置错误页
 ├── package.json
 └── README.md

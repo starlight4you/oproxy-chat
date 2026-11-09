@@ -124,7 +124,7 @@
       }
 
       .row > span:first-child {
-        width: 72px;
+        width: 88px;
         flex-shrink: 0;
         color: var(--muted);
         font-size: 12px;
@@ -250,12 +250,16 @@
 
       <section class="card">
         <div class="row">
+          <span>Relay 连接</span>
+          <code id="relayStatus">—</code>
+        </div>
+        <div class="row">
           <span>本地地址</span>
           <code id="localUrl">—</code>
           <button id="copyLocal" type="button">复制</button>
         </div>
         <div class="row">
-          <span>公网地址</span>
+          <span>Relay 公网地址</span>
           <input
             id="publicBase"
             type="text"
@@ -293,8 +297,8 @@
       </label>
 
       <p class="note">
-        Quick tunnel 的 URL 每次重启会变化；Phase 2 relay 会提供稳定地址。修改公网地址后，记得在聊天
-        MCP 设置里同步更新。
+        Relay 模式下 App 通过 WebSocket 主动连接 relay；聊天只连 relay 的公网 MCP 地址。Relay
+        公网地址变化后，记得在聊天 MCP 设置里同步更新。
       </p>
 
       <p id="message" class="message"></p>
@@ -319,14 +323,16 @@
       }
 
       function mcpUrl(status) {
-        return status.publicUrl || status.localUrl;
+        return status.relayPublicUrl
+          ? `${status.relayPublicUrl}/mcp`
+          : status.localUrl;
       }
 
       function configText(status) {
         const url = mcpUrl(status);
-        const warning = status.publicUrl
+        const warning = status.relayPublicUrl
           ? ""
-          : "注意：公网地址未配置，远端聊天无法访问本地 MCP。\n\n";
+          : "注意：Relay 公网地址未配置，远端聊天无法访问本地 MCP。\n\n";
         return `${warning}MCP 服务器 URL: ${url}\nTransport: Streamable HTTPS\nAuth: Bearer ${status.token}`;
       }
 
@@ -344,9 +350,20 @@
           $("statusText").textContent = status.running
             ? `运行中 · ${status.port}`
             : "已停止";
+
+          const relay = status.relay || {};
+          $("relayStatus").textContent = relay.connected
+            ? "已连接"
+            : relay.reconnectAttempts > 0 || relay.lastError
+              ? "重连中"
+              : "未连接";
+          $("relayStatus").title = relay.url || "";
+
           $("localUrl").textContent = status.localUrl || "—";
-          $("publicUrl").textContent = status.publicUrl || "未配置";
-          $("publicBase").value = status.publicBaseUrl || "";
+          $("publicUrl").textContent = status.relayPublicUrl
+            ? `${status.relayPublicUrl}/mcp`
+            : "未配置";
+          $("publicBase").value = status.relayPublicUrl || "";
           $("token").textContent = tokenVisible ? status.token : "••••••";
           $("toggleToken").textContent = tokenVisible ? "隐藏" : "显示";
           $("fileCount").textContent = String(status.fileCount || 0);
@@ -384,7 +401,7 @@
 
       $("savePublic").addEventListener("click", async () => {
         try {
-          const result = await window.mcpStatus.setPublicBaseUrl(
+          const result = await window.mcpStatus.setRelayPublicUrl(
             $("publicBase").value,
           );
           if (result.ok === false) {

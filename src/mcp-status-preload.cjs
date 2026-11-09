@@ -13,5 +13,7 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.invoke("mcp-status:set-login-item", enabled),
     setPublicBaseUrl: (url) =>
       ipcRenderer.invoke("mcp-status:set-public-base-url", url),
+    setRelayPublicUrl: (url) =>
+      ipcRenderer.invoke("mcp-status:set-relay-public-url", url),
   }),
 );

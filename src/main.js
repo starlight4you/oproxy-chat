@@ -26,6 +26,7 @@ import {
 import { runLocalCode } from "./runtime.js";
 import { createMcpService } from "./mcp-server.js";
 import { loadMcpConfig, saveMcpConfig } from "./mcp-config.js";
+import { createRelayClient } from "./relay-client.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,6 +59,7 @@ let showingErrorPage = false;
 let mcpService = null;
 let mcpConfig = null;
 let mcpStatusWindow = null;
+let relayClient = null;
 
 function isAllowedHost(hostname) {
   const host = hostname.toLowerCase();
@@ -736,6 +738,12 @@ ipcMain.handle("mcp-status:get", () => {
 
   return {
     ...status,
+    relay: relayClient?.getStatus() || {
+      connected: false,
+      url: mcpConfig?.relayUrl || "",
+      lastError: "",
+    },
+    relayPublicUrl: mcpConfig?.relayPublicUrl || "",
     loginAtLogin: app.getLoginItemSettings().openAtLogin,
   };
 });
@@ -811,6 +819,22 @@ ipcMain.handle("mcp-status:set-public-base-url", (_event, url) => {
     saveMcpConfig(mcpConfig);
   }
   mcpService?.setPublicBaseUrl(value);
+
+  return { ok: true, status: mcpService?.getStatus() };
+});
+
+ipcMain.handle("mcp-status:set-relay-public-url", (_event, url) => {
+  let value = String(url || "").trim().replace(/\/$/, "");
+  if (value.endsWith("/mcp")) value = value.slice(0, -4);
+
+  if (value && !/^https?:\/\//i.test(value)) {
+    return { ok: false, error: "Relay 公网地址必须是 http(s) URL" };
+  }
+
+  if (mcpConfig) {
+    mcpConfig.relayPublicUrl = value;
+    saveMcpConfig(mcpConfig);
+  }
 
   return { ok: true, status: mcpService?.getStatus() };
 });
@@ -1067,6 +1091,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on("before-quit", () => {
+    relayClient?.stop();
     mcpService?.stop();
   });
 
@@ -1143,7 +1168,20 @@ if (!gotSingleInstanceLock) {
 
     mcpService
       .start()
-      .then(() => console.log("Local MCP server started"))
+      .then(() => {
+        console.log("Local MCP server started");
+
+        if (mcpConfig.relayUrl) {
+          relayClient = createRelayClient({
+            url: mcpConfig.relayUrl,
+            token: mcpConfig.relayToken || mcpConfig.token,
+            localMcpUrl: `http://127.0.0.1:${mcpConfig.port}/mcp`,
+            localToken: mcpConfig.token,
+            onStatus: () => {},
+          });
+          relayClient.start();
+        }
+      })
       .catch((error) => console.error("Local MCP server failed", error));
 
     app.setAsDefaultProtocolClient("oproxy");
