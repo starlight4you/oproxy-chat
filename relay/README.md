@@ -10,7 +10,7 @@ relay (this service)
    │  WebSocket (app-initiated)
    ▼
 Oproxy Chat.app
-   └─ local MCP server (create_docx)
+   └─ local MCP server (create_docx / create_pdf / create_xlsx / create_pptx)
 ```
 
 The app does not expose a public port. The relay is the only public endpoint; the app reconnects to it automatically.

@@ -92,7 +92,7 @@ npm run dist:universal
 工作方式：
 
 1. 应用会自动在每条消息里加入一段**隐藏的**本地运行指令，不会显示在聊天气泡里。
-2. 当你在对话里请求生成文档（Word、PDF、Excel、PPT、报告等），AI 会输出 Python 代码，应用在临时目录中执行代码。
+2. 当你在对话里请求生成文档（Word、PDF、Excel、PPT、报告等），AI 会输出 Python 代码，应用在临时目录中执行代码。已连接本地 MCP 时，AI 会优先调用 MCP 工具，不输出 Python 代码。
 3. 文档生成期间，Python 代码块会被隐藏，消息里显示滚动的「正在生成......」高光动画；右下角显示「正在生成文档，请耐心等待…」。
 4. 生成完成后，文件自动保存到「下载」文件夹，并在消息里显示「文档已生成：xxx」卡片，可直接打开下载文件夹。
 5. 普通代码回答里的 **运行代码** 按钮也会在本地执行；文档生成消息会自动运行，不需要手动点。
@@ -124,10 +124,17 @@ Relay（relay/server.js，公网地址）
    │  WebSocket（由 App 主动连接）
    ▼
 Oproxy Chat.app
-   └─ 本地 MCP server（create_docx）
+   └─ 本地 MCP server（create_docx / create_pdf / create_xlsx / create_pptx）
 ```
 
 App 不需要开放公网端口；relay 是唯一公网入口。App 启动时自动连接 relay，断线后按指数退避重连（1s → 2s → … → 30s），并用 WebSocket ping/pong 检测死连接。
+
+MCP 工具：
+
+- `create_docx`：Word `.docx`
+- `create_pdf`：PDF（Chromium 渲染，中文字体正常）
+- `create_xlsx`：Excel `.xlsx`（Markdown 表格按标题分 sheet，也可传结构化 `sheets`）
+- `create_pptx`：PowerPoint `.pptx`（Markdown 标题分页，也可传结构化 `slides`）
 
 ### 启动 relay
 
@@ -208,7 +215,7 @@ Relay 检测到 App 未连接时，工具调用会返回：
   ```
 
 - 聊天里的 MCP 服务器使用同一个 token；Relay 公网地址变化后需要同步。
-- 连接成功后，隐藏的本地运行指令会优先让 AI 调用 `create_docx` MCP 工具；MCP 未连接时回退到内置 Python 运行环境。
+- 连接成功后，隐藏的本地运行指令会优先让 AI 调用 `create_docx` / `create_pdf` / `create_xlsx` / `create_pptx` MCP 工具；MCP 未连接时回退到内置 Python 运行环境。
 - `mcp-server/` 仍保留为独立参考/调试服务器；App 实际使用的是 `src/mcp-server.js`。
 - `relay/` 是 PoC relay，协议和部署细节见 `relay/README.md`。
 

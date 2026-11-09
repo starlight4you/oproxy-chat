@@ -1,6 +1,8 @@
 # Oproxy Local MCP Server
 
-A local MCP server for Oproxy Chat. It exposes a `create_docx` tool and saves generated Word documents to `~/Downloads`.
+A standalone reference/debug MCP server for Oproxy Chat. It exposes a `create_docx` tool and saves generated Word documents to `~/Downloads`.
+
+> The app-managed server in `../src/mcp-server.js` is the one actually used by the desktop app. It also exposes `create_pdf`, `create_xlsx`, and `create_pptx`.
 
 ## Requirements
 
@@ -77,4 +79,4 @@ pkill -f "cloudflared tunnel"
 
 - The quick tunnel URL changes every restart. Update the MCP server URL in Oproxy Chat after a restart.
 - For a stable URL, use a named Cloudflare Tunnel with your own domain.
-- The server currently supports Word `.docx`. PDF/Excel/PPT tools can be added later.
+- This reference server only implements Word `.docx`. The app-managed server supports Word, PDF, Excel, and PowerPoint.
