@@ -210,16 +210,18 @@ Relay 检测到 App 未连接时，工具调用会返回：
     "publicBaseUrl": "",
     "relayUrl": "ws://127.0.0.1:4444/app",
     "relayToken": "<token>",
+    "relayTokenUrl": "",
     "relayPublicUrl": "https://xxxx.trycloudflare.com"
   }
   ```
 
+- `relayTokenUrl` 预留给 Phase 3 的 token 交换接口。配置后 App 会用登录 Cookie 调用该接口获取短期 token，并在过期前自动刷新；留空则使用 `relayToken`。
 - 聊天里的 MCP 服务器使用同一个 token；Relay 公网地址变化后需要同步。
 - 连接成功后，隐藏的本地运行指令会优先让 AI 调用 `create_docx` / `create_pdf` / `create_xlsx` / `create_pptx` MCP 工具；MCP 未连接时回退到内置 Python 运行环境。
 - `mcp-server/` 仍保留为独立参考/调试服务器；App 实际使用的是 `src/mcp-server.js`。
-- `relay/` 是 PoC relay，协议和部署细节见 `relay/README.md`。
+- `relay/` 包含 relay 服务、Dockerfile 和部署说明，协议与配置见 `relay/README.md`。
 
-> Relay PoC 目前是单 App 连接 + 共享 token + quick tunnel。生产化需要稳定域名（如 `mcp.oproxy.world`）、WSS、OIDC 短期 token、多用户路由和限流。
+> Relay PoC 目前是单 App 连接 + 共享 token + quick tunnel。生产化需要稳定域名（如 `mcp.oproxy.world`）、WSS、OIDC 短期 token、多用户路由和限流。需要 Oproxy 侧配合的事项和接口契约见 [`docs/oproxy-phase3-cooperation.md`](docs/oproxy-phase3-cooperation.md)。
 
 ## 快捷键
 
@@ -290,6 +292,8 @@ xattr -d com.apple.quarantine "/Applications/Oproxy Chat.app"
 ```
 .
 ├── build/              # 图标资源（icon.png / icon.icns）
+├── docs/
+│   └── oproxy-phase3-cooperation.md  # 生产化配合说明
 ├── relay/
 │   ├── server.js       # MCP Streamable HTTP ↔ WebSocket relay
 │   └── README.md       # relay 协议与部署说明

@@ -27,6 +27,8 @@ export function loadMcpConfig() {
         typeof data.relayToken === "string" && data.relayToken
           ? data.relayToken
           : token,
+      relayTokenUrl:
+        typeof data.relayTokenUrl === "string" ? data.relayTokenUrl : "",
       relayPublicUrl:
         typeof data.relayPublicUrl === "string"
           ? data.relayPublicUrl.replace(/\/$/, "")
@@ -40,6 +42,7 @@ export function loadMcpConfig() {
       publicBaseUrl: "",
       relayUrl: "",
       relayToken: token,
+      relayTokenUrl: "",
       relayPublicUrl: "",
     };
   }

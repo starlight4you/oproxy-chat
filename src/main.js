@@ -61,6 +61,35 @@ let mcpConfig = null;
 let mcpStatusWindow = null;
 let relayClient = null;
 
+async function fetchRelayToken(config) {
+  const response = await session.defaultSession.fetch(config.relayTokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      relayUrl: config.relayUrl,
+      relayPublicUrl: config.relayPublicUrl || "",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`token endpoint HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data || typeof data.token !== "string" || !data.token) {
+    throw new Error("token endpoint returned no token");
+  }
+
+  return {
+    token: data.token,
+    expiresAt: data.expiresAt,
+  };
+}
+
 function isAllowedHost(hostname) {
   const host = hostname.toLowerCase();
   if (host === APP_HOST) return true;
@@ -1175,6 +1204,9 @@ if (!gotSingleInstanceLock) {
           relayClient = createRelayClient({
             url: mcpConfig.relayUrl,
             token: mcpConfig.relayToken || mcpConfig.token,
+            getToken: mcpConfig.relayTokenUrl
+              ? () => fetchRelayToken(mcpConfig)
+              : null,
             localMcpUrl: `http://127.0.0.1:${mcpConfig.port}/mcp`,
             localToken: mcpConfig.token,
             onStatus: () => {},
