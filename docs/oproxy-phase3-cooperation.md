@@ -47,6 +47,7 @@
 - 聊天端 MCP 服务器通过 relay 连接成功，四个工具均可调用。
 - App 退出后 relay 返回友好离线错误；App 重启后自动重连，聊天端配置无需修改。
 - 本地端到端验证已完成；公网联调需要 Oproxy 提供自有域名和反向代理。
+- 全本地联调（LibreChat 跑在本机、mock model、relay、App）已验证，不使用任何公网隧道；步骤见 [`local-integration.md`](local-integration.md)。
 
 当前 PoC 的限制：
 
@@ -324,6 +325,7 @@ Authorization: Bearer <tunnelToken>
 以下行为已经在 macOS App 中实现，Oproxy 侧不需要重复开发：
 
 - App 启动时自动启动本地 MCP server（`127.0.0.1:3333`）。
+- MCP 未连接时，App 支持模型输出 `oproxy-document` JSON，由内置 JS 生成器直接生成 Word / PDF / Excel / PPT，不依赖 Python 或 MCP。这条路径保证用户“打开 App + 登录 Oproxy”即可使用文档功能。
 - App 启动时自动连接 `relayUrl`，断线后指数退避重连（1s → 2s → … → 30s）。
 - WebSocket ping/pong 心跳，60s 无 pong 自动重连。
 - 支持 `relayTokenUrl`：用登录 Cookie 调用 token 交换接口，token 过期前 60s 自动刷新，收到 `1008` 后刷新并重连。

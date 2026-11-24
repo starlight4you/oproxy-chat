@@ -51,7 +51,7 @@ if (screenshotIndex !== -1) {
     captureBeyondViewport: false,
   });
   fs.writeFileSync(output, Buffer.from(data, "base64"));
-  console.log(JSON.stringify({ screenshot: output, page: page.url, title: page.title }));
+  console.log(JSON.stringify({ screenshot: output, page: page.url.startsWith("data:")?"data:document-preview":page.url, title: page.title }));
 } else {
   const expression =
     args[0] || "JSON.stringify({ title: document.title, url: location.href })";

@@ -22,15 +22,31 @@ import {
   sanitizeFilename,
   writeDocx,
   writePdf,
+  renderSvgImage,
 } from "./export.js";
-import { runLocalCode } from "./runtime.js";
+import { parseDocumentEnvelope, parseSkillEnvelope } from "./documents/protocol.js";
+import { classifyDocumentIntent } from "./documents/intent.js";
+import { createDocumentService } from "./documents/service.js";
+import { documentInstruction, getSkillInstruction, getRepairInstruction } from "./documents/skills.js";
 import { createMcpService } from "./mcp-server.js";
 import { loadMcpConfig, saveMcpConfig } from "./mcp-config.js";
 import { createRelayClient } from "./relay-client.js";
+import { providerForModel } from "./provider-icons.js";
+import { createAccountService } from "./account-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const INJECT_SCRIPT = fs.readFileSync(
+const REASONING_UI_SCRIPT=fs.readFileSync(path.join(__dirname,"reasoning-ui.js"),"utf8");
+const DOCUMENT_UI_SCRIPT=fs.readFileSync(path.join(__dirname,"document-ui.js"),"utf8");
+const ACCOUNT_UI_SCRIPT=fs.readFileSync(path.join(__dirname,"account-ui.js"),"utf8");
+const CAPABILITY_SCRIPT=fs.readFileSync(path.join(__dirname,"capability-policy.js"),"utf8");
+const WORKFLOW_SCRIPT=fs.readFileSync(path.join(__dirname,"document-workflow.js"),"utf8");
+const WORKFLOW_MODES_SCRIPT=fs.readFileSync(path.join(__dirname,"workflow-modes.js"),"utf8");
+const providerIconDirectory = path.join(__dirname, 'assets/providers');
+const providerIconAssets = Object.fromEntries(fs.readdirSync(providerIconDirectory).filter(file => file.endsWith('.svg')).map(file => [path.basename(file, '.svg'), fs.readFileSync(path.join(providerIconDirectory, file), 'utf8')]));
+const PROVIDER_ICONS_SCRIPT = `window.__oproxyProviderForModel = ${providerForModel.toString()};window.__oproxyProviderIconAssets = ${JSON.stringify(providerIconAssets)};\n` + fs.readFileSync(path.join(__dirname, 'provider-icons-ui.js'), 'utf8');
+const ENDPOINT_SELECTOR_SCRIPT = fs.readFileSync(path.join(__dirname, 'endpoint-selector-ui.js'), 'utf8');
+const INJECT_SCRIPT = `window.__oproxyParseSkillEnvelope = ${parseSkillEnvelope.toString()};window.__oproxyParseDocumentEnvelope = ${parseDocumentEnvelope.toString()};\n` + CAPABILITY_SCRIPT + WORKFLOW_MODES_SCRIPT + WORKFLOW_SCRIPT + REASONING_UI_SCRIPT + DOCUMENT_UI_SCRIPT + ACCOUNT_UI_SCRIPT + PROVIDER_ICONS_SCRIPT + ENDPOINT_SELECTOR_SCRIPT + `\nwindow.__oproxyDocumentIntent = ${classifyDocumentIntent.toString()};\nwindow.__oproxyDocumentInstruction = ${JSON.stringify(documentInstruction)};\n` + fs.readFileSync(
   path.join(__dirname, "inject.js"),
   "utf8",
 );
@@ -52,11 +68,19 @@ const ALLOWED_PERMISSIONS = new Set([
 ]);
 
 app.setName(APP_NAME);
+// Explicit isolated directories for developer/package acceptance runs. Never
+// copy an existing user's login/session into a clean-install verification.
+if (process.env.OPROXY_USER_DATA_DIR) app.setPath("userData",path.resolve(process.env.OPROXY_USER_DATA_DIR));
+if (process.env.OPROXY_DOWNLOADS_DIR) {
+  fs.mkdirSync(process.env.OPROXY_DOWNLOADS_DIR,{recursive:true});
+  app.setPath("downloads",path.resolve(process.env.OPROXY_DOWNLOADS_DIR));
+}
 app.userAgentFallback = USER_AGENT;
 
 let mainWindow = null;
 let showingErrorPage = false;
 let mcpService = null;
+let documentService = null;
 let mcpConfig = null;
 let mcpStatusWindow = null;
 let relayClient = null;
@@ -742,9 +766,79 @@ ipcMain.handle("show-message-document-menu", async (event, payload) => {
   return { ok: true };
 });
 
-ipcMain.handle("run-local-code", async (event, payload) => {
-  const win = BrowserWindow.fromWebContents(event.sender) || getWindow();
-  return runLocalCode(payload, win);
+function isChatFrame(event) {
+  try { return event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame && new URL(event.senderFrame.url).origin === APP_ORIGIN; }
+  catch { return false; }
+}
+const accountService = createAccountService();
+ipcMain.handle('account-summary', (event, email) => {
+  if (!isChatFrame(event)) return { ok: false, error: '当前页面无权读取账户' };
+  return accountService.read(email);
+});
+ipcMain.handle('open-account-page', async (event, destination) => {
+  if (!isChatFrame(event)) return { ok: false };
+  try { return await accountService.open(destination); }
+  catch { return { ok: false, error: '无法打开 Oproxy 网站，请稍后重试' }; }
+});
+ipcMain.handle("read-document-skill", (event, type) => {
+  if (!isChatFrame(event)) return { ok: false, error: "当前页面无权读取文档技能" };
+  try {
+    const instruction = getSkillInstruction(type);
+    console.log(`[document-skill] read ${type}`);
+    return { ok: true, type, instruction };
+  } catch(error) { return { ok: false, error: String(error.message || error) }; }
+});
+
+ipcMain.handle("repair-document",(event,{type,diagnostic}={})=>{
+  if(!isChatFrame(event))return {ok:false,error:"当前页面无权修正文档"};
+  try { return {ok:true,type,instruction:getRepairInstruction(type,diagnostic)}; }
+  catch(error){return {ok:false,error:String(error.message||error)};}
+});
+
+ipcMain.handle("generate-document", async (event, payload) => {
+  if (!isChatFrame(event)) {
+    return { ok: false, error: "当前页面无权生成文档" };
+  }
+  if (!documentService) return { ok: false, error: "文档引擎尚未初始化" };
+  try {
+    const result = await documentService.generate(payload || {});
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error), repairable: error?.repairable===true };
+  }
+});
+
+ipcMain.handle("lookup-document", async(event,request)=>{
+  if(!isChatFrame(event))return {ok:false,error:"当前页面无权读取文档结果"};
+  try{return {ok:true,document:await documentService.lookup(request||{})};}
+  catch(error){return {ok:false,error:String(error.message||error)};}
+});
+ipcMain.handle("document-action",async(event,{documentId,action}={})=>{
+  if(!isChatFrame(event))return {ok:false,error:"当前页面无权打开文档"};
+  try{
+    if(!["preview","open","reveal"].includes(action))throw new Error("不支持的文档操作。");
+    const entry=await documentService.resolveDocument(documentId);
+    if(action==="preview"){
+      const preview=await documentService.previewDocument(documentId);
+      const window=new BrowserWindow({width:1080,height:820,minWidth:640,title:`${entry.filename} · 文档预览`,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,partition:"oproxy-document-preview"}});
+      window.webContents.setWindowOpenHandler(()=>({action:"deny"}));
+      window.webContents.on("will-navigate",event=>event.preventDefault());
+      await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(preview.html)}`);
+    }
+    else if(action==="reveal")shell.showItemInFolder(entry.filePath);
+    else {const error=await shell.openPath(entry.filePath);if(error)throw new Error(error);}
+    return {ok:true};
+  }catch(error){return {ok:false,error:String(error.message||error)};}
+});
+
+ipcMain.handle("document-icon", async(event, documentId) => {
+  if (!isChatFrame(event)) return { ok: false };
+  try {
+    const entry = await documentService.resolveDocument(documentId);
+    const icon = await app.getFileIcon(entry.filePath, { size: "normal" });
+    if (icon.isEmpty()) return { ok: false };
+    return { ok: true, dataUrl: icon.toDataURL() };
+  } catch { return { ok: false }; }
 });
 
 ipcMain.handle("open-downloads", async () => {
@@ -1176,8 +1270,12 @@ if (!gotSingleInstanceLock) {
   app.whenReady().then(() => {
     configureSession();
 
+    documentService = createDocumentService({
+      directory: app.getPath("downloads"), stateDirectory: app.getPath("userData"), renderPdf: writePdf, renderSvg: renderSvgImage,
+    });
     mcpConfig = loadMcpConfig();
     mcpService = createMcpService({
+      documentEngine: documentService,
       token: mcpConfig.token,
       port: mcpConfig.port,
       publicBaseUrl: mcpConfig.publicBaseUrl,

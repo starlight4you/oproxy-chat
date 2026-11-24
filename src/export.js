@@ -303,3 +303,15 @@ export async function writePdf(html, filePath) {
     await fs.promises.unlink(tempFile).catch(() => {});
   }
 }
+
+// Render chart compatibility previews using the Chromium already bundled in the app.
+export async function renderSvgImage(svg) {
+  const window = new BrowserWindow({ show: false, width: 1200, height: 470, useContentSize: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, partition: "oproxy-chart-preview" },
+  });
+  try {
+    await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"></head><body style="margin:0;width:1200px;height:470px">${svg}</body></html>`)}`);
+    await window.webContents.executeJavaScript("document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))");
+    return (await window.webContents.capturePage({ x: 0, y: 0, width: 1200, height: 470 })).toPNG();
+  } finally { window.destroy(); }
+}
